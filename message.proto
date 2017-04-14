@@ -1,0 +1,38 @@
+syntax="proto2";
+
+message Message {
+    required string name = 1;
+    required int32 messageId = 2;
+    required bytes content = 3;
+};
+
+message LoginMessage {
+    map<string, int32> files = 1;
+    required int32 wallet = 2;
+};
+
+message PurchaseRequest {
+    required string fileName = 1;
+    required int32 cost = 2;
+};
+
+message PurchaseConfirmedSeller {
+    required string fileName = 1;
+    required string buyer = 2;
+    required int32 requestNumber = 3;
+    required int32 cost = 4;
+};
+
+message PurchaseConfirmedBuyer {
+    required int32 value = 1;
+    required string seller = 2;
+    required int32 requestNumber = 3;
+};
+
+message PurchaseRejected {
+    required int32 requestNumber = 1;
+};
+
+message RobberyComplaint {
+    required string buyer = 1;
+};
