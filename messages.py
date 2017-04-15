@@ -55,23 +55,25 @@ class PurchaseConfirmedSeller(Message):
         result.fileName = self.fileName
         result.buyer = self.buyer
         result.requestNumber = self.requestNumber
-        result.cost = cost
+        result.cost = self.cost
         return result
 
 class PurchaseConfirmedBuyer(Message):
     name = "purchase-confrm-buyer"
 
-    def __init__(self, fileName: str, value: int, seller: str, messageId: int = 0):
+    def __init__(self, fileName: str, value: int, seller: str, requestNumber: int, messageId: int = 0):
         Message.__init__(self, messageId)
         self.fileName = fileName
         self.value = value
         self.seller = seller
+        self.requestNumber = requestNumber
 
     def serializeContent(self):
         result = pb.PurchaseConfirmedBuyer()
         result.fileName = self.fileName
         result.value = self.value
         result.seller = self.seller
+        result.requestNumber = self.requestNumber
         return result
 
 class PurchaseRejected(Message):
@@ -112,17 +114,17 @@ def parse_message(messageBytes: bytes):
     if message.name == "purchase-confrm-seller":
         content = pb.PurchaseConfirmedSeller()
         content.ParseFromString(message.content)
-        return PurchaseConfirmedSeller(content.fileName, content.buyer, message.messageId)
+        return PurchaseConfirmedSeller(content.fileName, content.buyer, content.requestNumber, content.cost, message.messageId)
     if message.name == "purchase-confrm-buyer":
         content = pb.PurchaseConfirmedBuyer()
         content.ParseFromString(message.content)
-        return PurchaseConfirmedBuyer(content.fileName, content.value, content.seller, message.messageId)
+        return PurchaseConfirmedBuyer(content.fileName, content.value, content.seller, content.requestNumber, message.messageId)
     if message.name == "purchase-rej":
         content = pb.PurchaseRejected()
         content.ParseFromString(message.content)
         return PurchaseRejected(content.requestNumber, message.messageId)
     if message.name == "robbery":
         content = pb.RobberyComplaint()
-        conetnt.ParseFromString(message.content)
+        content.ParseFromString(message.content)
         return RobberyComplaint(content.buyer, message.messageId)
     raise NotImplementedError("Unknown message name: " + message.name)

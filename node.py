@@ -1,5 +1,6 @@
 import sys
 import struct
+import traceback
 from select import select
 from socket import *
 from messages import *
@@ -67,43 +68,47 @@ def node_init(nodeAddr: str, nodePort: int):
     send_message(LoginMessage(filesDict, wallet))
     print("Node initialized")
 
-def getAndRemove(dictn, key):
-    result = dictn[key]
-    dictn.erase(key)
-
 def performTransaction(buyer, seller, fileName, cost):
-    usersData[seller][0] += cost - usersData[seller][1][fileName]
-    usersData[buyer][0] -= cost
+    usersData[seller] = (usersData[seller][0] + cost - usersData[seller][1][fileName], usersData[seller][1])
+    usersData[buyer] = (usersData[buyer][0] - cost, usersData[buyer][1])
     usersData[buyer][1][fileName] = cost
 
 def process_input():
     for readyToRead in select([sys.stdin, sock, multisock], [], [])[0]:
         if readyToRead == sys.stdin:
             line = input().split()
-            if not line: continue
+            if not line: 
+                print("Users info:")
+                print(usersData)
+                continue
             try:
                 addr = line[0]
                 port, cost = map(int, line[1:3])
                 name = ' '.join(line[3:])
-                pendingPurchases[messageId] = (name, cost, address_to_string((addr, port)))
+                pendingPurchases[messageId] = (name, cost, address_to_str((addr, port)))
                 send_message(PurchaseRequest(name, cost), (addr, port))
             except:
-                print('Invalid command')
+                traceback.print_exc()
         else:
             messageBytes, senderAddr = readyToRead.recvfrom(4096)
             sender = address_to_str(senderAddr)
             message = parse_message(messageBytes)
 
             if message.name == "login":
-                if sender in usersData: continue
+                if sender in usersData and sender != localId: 
+                    continue
                 print("New user discovered: name", sender, "content", message.fileCosts, "wallet", message.wallet)
                 usersData[sender] = (message.wallet, message.fileCosts)
+                if sender != localId:
+                    send_message(LoginMessage(usersData[localId][1], usersData[localId][0]), senderAddr)
                 continue
 
             if sender not in usersData or sender == localId:
                 continue
 
+            print(sender, ": ", sep='', end='')
             if message.name == "purchase-req":
+                print("Purchase of", message.fileName, "for", message.cost, "was requested by", sender, "request no.", message.messageId)
                 if message.cost > usersData[sender][0]:
                     send_message(RobberyComplaint(sender))
                     continue
@@ -114,59 +119,69 @@ def process_input():
                 else:
                     send_message(PurchaseRejected(message.messageId), senderAddr)
             elif message.name == "purchase-confrm-seller":
+                print("Seller confirmed purchase of", message.fileName, "for", message.cost, "by", message.buyer, "request no.", message.requestNumber)
+                buyer, seller = message.buyer, sender
                 if message.buyer == localId:
                     pendingData = pendingPurchases[message.requestNumber]
-                    if message.fileName != pendingData[0] or message.cost != pendingData[1] or sender != pendingData[2]:
+                    if message.fileName != pendingData[0] or message.cost != pendingData[1] or seller != pendingData[2]:
                         send_message(RobberyComplaint(sender))
                         continue
-                    pendingPurchases.remove(message.requestNumber)
-                    send_message(PurchaseConfirmedBuyer(*pendingData))
-                    performTransaction(localId, sender, message.fileName, message.cost)
+                    del pendingPurchases[message.requestNumber]
+                    send_message(PurchaseConfirmedBuyer(pendingData[0], pendingData[1], pendingData[2], message.requestNumber))
+                    performTransaction(buyer, seller, message.fileName, message.cost)
                 else:
-                    if (message.requestNumber, message.buyer) not in unconfirmedPurchasesBuyer:
-                        unconfirmedPurchasesSeller[(message.requestNumber, sender)] = (message.fileName, message.cost, message.buyer)
+                    buyerKey = (message.requestNumber, buyer)
+                    sellerKey = (message.requestNumber, seller)
+                    if buyerKey not in unconfirmedPurchasesBuyer:
+                        unconfirmedPurchasesSeller[sellerKey] = (message.fileName, message.cost, buyer)
                     else:
-                        unconfirmedData = unconfirmedPurchasesBuyer[(message.requestNumber, message.buyer)]
-                        if message.fileName != unconfirmedData[0] or message.cost != unconfirmedData[1] or message.seller != unconfirmedData[2]:
+                        unconfirmedData = unconfirmedPurchasesBuyer[buyerKey]
+                        if message.fileName != unconfirmedData[0] or message.cost != unconfirmedData[1] or seller != unconfirmedData[2]:
                             continue
-                        unconfirmedPurchasesBuyer.erase((message.requestNumber, message.buyer))
-                        performTransaction(message.buyer, sender, message.fileName, message.cost)
+                        del unconfirmedPurchasesBuyer[buyerKey]
+                        performTransaction(buyer, seller, message.fileName, message.cost)
             elif message.name == "purchase-confrm-buyer":
-                if message.seller == localId:
-                    if (message.requestNumber, sender) not in unconfirmedPurchasesSeller:
+                print("Buyer confirmed purchase of", message.fileName, "for", message.value, "from", message.seller, "request no.", message.requestNumber)
+                buyer, seller = sender, message.seller
+                buyerKey = (message.requestNumber, buyer)
+                sellerKey = (message.requestNumber, seller)
+                if seller == localId:
+                    if sellerKey not in unconfirmedPurchasesSeller:
                         send_message(RobberyComplaint(sender))
                         continue
-                    unconfirmedData = unconfirmedPurchasesSeller[(message.requestNumber, sender)]
-                    if message.fileName != unconfirmedData[0] or message.value != unconfimedData[1] or sender != unconfirmedData[2]:
+                    unconfirmedData = unconfirmedPurchasesSeller[sellerKey]
+                    if message.fileName != unconfirmedData[0] or message.value != unconfirmedData[1] or buyer != unconfirmedData[2]:
                         send_message(RobberyComplaint(sender))
                         continue
-                    unconfirmedPurchasesSeller.erase((message.requestNumber, sender))
-                    performTransaction(sender, message.seller, message.fileName, message.value)
+                    del unconfirmedPurchasesSeller[sellerKey]
+                    performTransaction(buyer, seller, message.fileName, message.value)
                 else:
-                    if (message.requestNumber, sender) not in unconfirmedPurchasesSeller:
-                        unconfirmedPurchasesBuyer[(message.requestNumber, sender)] = (message.fileName, message.value, message.seller)
+                    if sellerKey not in unconfirmedPurchasesSeller:
+                        unconfirmedPurchasesBuyer[buyerKey] = (message.fileName, message.value, seller)
                     else:
-                        unconfirmedData = unconfirmedPurchasesSeller[(message.requestNumber, sender)]
-                        if message.fileName != unconfirmedData[0] or message.value != unconfimedData[1] or sender != unconfirmedData[2]:
+                        unconfirmedData = unconfirmedPurchasesSeller[sellerKey]
+                        if message.fileName != unconfirmedData[0] or message.value != unconfimedData[1] or buyer != unconfirmedData[2]:
                             continue
-                        unconfirmedPurchasesSeller.erase((message.requestNumber, sender))
-                        performTransaction(sender, message.seller, message.fileName, message.value)
+                        del unconfirmedPurchasesSeller[sellerKey]
+                        performTransaction(buyer, seller, message.fileName, message.value)
             elif message.name == "purchase-rej":
-                if message.requestNumber not in pendingPurchases:
+                print("Your purchase", pendingPurchases[message.requestNumber], "with request no.", message.requestNumber, "was rejected")
+                if message.requestNumber not in pendingPurchases or pendingPurchases[message.requestNumber][2] != sender:
                     send_message(RobberyComplaint(sender))
                     continue
-                pendingPurchases.erase(message.requestNumber)
+                del pendingPurchases[message.requestNumber]
             elif message.name == "robbery":
-                usersData.erase(message.buyer)
+                print("Erroneous behaviour from user", message.buyer)
+                del usersData[message.buyer]
                 keys = [kv[0] for kv in pendingPurchases.items() if kv[1][2] == message.buyer]
                 for k in keys:
-                    pendingPurchases.erase(k)
-                keys = k for k in unconfirmedPurchasesSeller if k[1] == message.buyer
+                    del pendingPurchases[k]
+                keys = [k for k in unconfirmedPurchasesSeller if k[1] == message.buyer]
                 for k in keys:
-                    unconfirmedPurchasesSeller.erase(k)
-                keys = k for k in unconfirmedPurchasesBuyer if k[1] == message.buyer
+                    del unconfirmedPurchasesSeller[k]
+                keys = [k for k in unconfirmedPurchasesBuyer if k[1] == message.buyer]
                 for k in keys:
-                    unconfirmedPurchasesBuyer.erase(k)
+                    del unconfirmedPurchasesBuyer[k]
 
 def node_deinit():
     sock.close()

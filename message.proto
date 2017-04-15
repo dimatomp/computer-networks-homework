@@ -24,9 +24,10 @@ message PurchaseConfirmedSeller {
 };
 
 message PurchaseConfirmedBuyer {
-    required int32 value = 1;
-    required string seller = 2;
-    required int32 requestNumber = 3;
+    required string fileName = 1;
+    required int32 value = 2;
+    required string seller = 3;
+    required int32 requestNumber = 4;
 };
 
 message PurchaseRejected {
