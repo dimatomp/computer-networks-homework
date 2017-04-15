@@ -61,19 +61,17 @@ class PurchaseConfirmedSeller(Message):
 class PurchaseConfirmedBuyer(Message):
     name = "purchase-confrm-buyer"
 
-    def __init__(self, fileName: str, value: int, seller: str, cost: int, messageId: int = 0):
+    def __init__(self, fileName: str, value: int, seller: str, messageId: int = 0):
         Message.__init__(self, messageId)
         self.fileName = fileName
         self.value = value
         self.seller = seller
-        self.cost = cost
 
     def serializeContent(self):
         result = pb.PurchaseConfirmedBuyer()
         result.fileName = self.fileName
         result.value = self.value
         result.seller = self.seller
-        result.cost = cost
         return result
 
 class PurchaseRejected(Message):
