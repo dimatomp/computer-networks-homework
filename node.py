@@ -102,6 +102,19 @@ def process_input():
                 if sender != localId:
                     send_message(LoginMessage(usersData[localId][1], usersData[localId][0]), senderAddr)
                 continue
+            elif message.name == "robbery":
+                print(sender + ": Erroneous behaviour from user", message.buyer)
+                del usersData[message.buyer]
+                keys = [kv[0] for kv in pendingPurchases.items() if kv[1][2] == message.buyer]
+                for k in keys:
+                    del pendingPurchases[k]
+                keys = [k for k in unconfirmedPurchasesSeller if k[1] == message.buyer]
+                for k in keys:
+                    del unconfirmedPurchasesSeller[k]
+                keys = [k for k in unconfirmedPurchasesBuyer if k[1] == message.buyer]
+                for k in keys:
+                    del unconfirmedPurchasesBuyer[k]
+                continue
 
             if sender not in usersData or sender == localId:
                 continue
@@ -160,7 +173,7 @@ def process_input():
                         unconfirmedPurchasesBuyer[buyerKey] = (message.fileName, message.value, seller)
                     else:
                         unconfirmedData = unconfirmedPurchasesSeller[sellerKey]
-                        if message.fileName != unconfirmedData[0] or message.value != unconfimedData[1] or buyer != unconfirmedData[2]:
+                        if message.fileName != unconfirmedData[0] or message.value != unconfirmedData[1] or buyer != unconfirmedData[2]:
                             continue
                         del unconfirmedPurchasesSeller[sellerKey]
                         performTransaction(buyer, seller, message.fileName, message.value)
@@ -170,18 +183,6 @@ def process_input():
                     send_message(RobberyComplaint(sender))
                     continue
                 del pendingPurchases[message.requestNumber]
-            elif message.name == "robbery":
-                print("Erroneous behaviour from user", message.buyer)
-                del usersData[message.buyer]
-                keys = [kv[0] for kv in pendingPurchases.items() if kv[1][2] == message.buyer]
-                for k in keys:
-                    del pendingPurchases[k]
-                keys = [k for k in unconfirmedPurchasesSeller if k[1] == message.buyer]
-                for k in keys:
-                    del unconfirmedPurchasesSeller[k]
-                keys = [k for k in unconfirmedPurchasesBuyer if k[1] == message.buyer]
-                for k in keys:
-                    del unconfirmedPurchasesBuyer[k]
 
 def node_deinit():
     sock.close()
